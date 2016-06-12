@@ -191,7 +191,8 @@ bool BVH::load(const char* data) {
 			int channel;
 			Part* part;
 			float value;
-			vec3 pos, rot;
+			vec3 pos;
+			Quaternion rot;
 			const vec3 xAxis(1,0,0);
 			const vec3 yAxis(0,1,0);
 			const vec3 zAxis(0,0,1);
@@ -202,7 +203,6 @@ bool BVH::load(const char* data) {
 				partIndex = 0;
 				part = m_parts[0];
 				channel = part->channels;
-				pos = rot = vec3(0);
 				
 				while(*data) {
 					readFloat(data, value);
@@ -210,19 +210,15 @@ bool BVH::load(const char* data) {
 					case Xpos: pos.x = value; break;
 					case Ypos: pos.y = value; break;
 					case Zpos: pos.z = value; break;
-					case Xrot: rot.x = value; break;
-					case Yrot: rot.y = value; break;
-					case Zrot: rot.z = value; break;
+					case Xrot: rot = rot * Quaternion(xAxis, value*toRad); break;
+					case Yrot: rot = rot * Quaternion(yAxis, value*toRad); break;
+					case Zrot: rot = rot * Quaternion(zAxis, value*toRad); break;
 					}
 					channel >>= 3;
 
 					// Read all values for this part - process!
 					if(channel == 0) {
-						Quaternion qX(xAxis, rot.x * toRad);
-						Quaternion qY(yAxis, rot.y * toRad);
-						Quaternion qZ(zAxis, rot.z * toRad);
-
-						part->motion[frame].rotation = qZ * qX * qY;
+						part->motion[frame].rotation = rot;
 						part->motion[frame].offset = pos;
 
 						// Extract matrix for comparison
@@ -232,6 +228,7 @@ bool BVH::load(const char* data) {
 
 						// Next part
 						++partIndex;
+						rot = Quaternion();
 						if(partIndex == m_partCount) break;
 						part = m_parts[partIndex];
 						channel = part->channels;
