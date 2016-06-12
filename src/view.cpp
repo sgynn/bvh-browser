@@ -3,12 +3,13 @@
 #include <cstdio>
 #include <cstdlib>
 
-View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), m_paused(false), m_state(EMPTY) {
+View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), m_paused(false), m_state(EMPTY), m_bvh(0) {
 	m_near = 0.1f;
 	m_far = 1000.f;
+	m_frame = 0;
 	updateProjection();
 
-	m_camera = vec3(10, 10, 10);
+	m_camera = vec3(60, 60, 60);
 	updateCamera();
 }
 
@@ -29,6 +30,9 @@ bool View::loadFile(const char* file) {
 	// Read bvh
 	m_bvh = new BVH();
 	bool r = m_bvh->load(content);
+	m_final = new Transform[ m_bvh->getPartCount() ];
+	updateBones(111.5);
+	
 	return r;
 }
 
@@ -39,9 +43,30 @@ void View::resize(int x, int y, int w, int h) {
 	m_height = h;
 	updateProjection();
 }
+void View::rotateView(float yaw, float pitch) {
+	vec3 d = m_camera - m_target;
+	float length = d.length();
+	float oldYaw = atan2(d.x, d.z);
+	float oldPitch = atan2(d.y, sqrt(d.x*d.x+d.z*d.z));
+
+	float cp = cos(pitch+oldPitch);
+	d.x = sin(yaw+oldYaw) * cp;
+	d.y = sin(pitch+oldPitch);
+	d.z = cos(yaw+oldYaw) * cp;
+	d *= length;
+	m_camera = m_target + d;
+	updateCamera();
+}
 
 void View::update(float time) {
 	
+	if(m_bvh) {
+		m_frame += time / m_bvh->getFrameTime();
+		if(m_frame > m_bvh->getFrames()) m_frame = 0;
+		updateBones(m_frame);
+	}
+
+
 }
 
 void View::render() const {
@@ -55,10 +80,87 @@ void View::render() const {
 
 
 	glEnableClientState(GL_VERTEX_ARRAY);
+	glPushMatrix();
 	glRotatef(90, 1,0,0);
+	glScalef(10,10,10);
 	drawGrid();
+	glPopMatrix();
+
+	// Draw skeleton
+	if(m_bvh) {
+		glEnable(GL_POLYGON_OFFSET_LINE);
+		glPolygonOffset(-1,-1);
+		float matrix[16];
+		for(int i=0; i<m_bvh->getPartCount(); ++i) {
+			float s = m_bvh->getPart(i)->end.y;
+			m_final[i].toMatrix(matrix, s);
+
+			const BVH::Part* part = m_bvh->getPart(i);
+
+			glPushMatrix();
+			glMultMatrixf(matrix);
+			glBegin(GL_LINES);
+			glVertex3f(0,0,0);
+			glVertex3fv(&part->end.x);
+			glEnd();
+			glPopMatrix();
+
+
+
+
+			/*
+			glPushMatrix();
+			glMultMatrixf(matrix);
+			glScalef(s,s,s);
+
+			glPolygonMode(GL_FRONT, GL_LINE);
+			glColor4f(0.2, 0, 0.5, 1);
+			drawBone();
+			glPolygonMode(GL_FRONT, GL_FILL);
+			glColor4f(0.5, 0, 1, 1);
+			drawBone();
+			glPopMatrix();
+			*/
+		}
+	}
+
+
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
+
+// ------------------------------------------------- //
+
+void View::updateBones(float frame) {
+	int f = floor(frame);
+	float t = frame - f;
+
+	if(f >= m_bvh->getFrames()-1) {
+		f = m_bvh->getFrames()-1;
+		t = 0.f;
+	}
+
+	Transform local;
+	for(int i=0; i<m_bvh->getPartCount(); ++i) {
+		const BVH::Part* part = m_bvh->getPart(i);
+
+		if(t > 0) {
+			local.offset = lerp(part->motion[f].offset, part->motion[f+1].offset, t);
+			local.rotation = slerp(part->motion[f].rotation, part->motion[f+1].rotation, t);
+		} else {
+			local = part->motion[f];
+		}
+
+		if(part->parent>=0) {
+			local.offset = part->offset; // ?
+			const Transform& parent = m_final[part->parent];
+			m_final[i].offset   = parent.offset + parent.rotation * local.offset;
+			m_final[i].rotation = parent.rotation * local.rotation;
+		} else {
+			m_final[i] = local;
+		}
+	}
+}
+
 
 // ------------------------------------------------- //
 

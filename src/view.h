@@ -14,6 +14,7 @@ class View {
 
 	bool loadFile(const char* file);
 	void resize(int x, int y, int w, int h);
+	void rotateView(float yaw, float pitch);
 
 	void render() const;
 	void update(float time);
@@ -25,7 +26,10 @@ class View {
 	char m_title[128];
 	bool m_paused;
 	State m_state;
-	BVH*  m_bvh;
+
+	BVH*       m_bvh;
+	Transform* m_final;
+	float      m_frame;
 
 	float m_projectionMatrix[16];
 	float m_viewMatrix[16];
@@ -34,6 +38,7 @@ class View {
 	vec3  m_target;
 
 	protected:
+	void updateBones(float frame);
 	void updateCamera();
 	void updateProjection(float fov=90);
 	static void drawGrid();

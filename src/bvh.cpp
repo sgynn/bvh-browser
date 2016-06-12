@@ -26,7 +26,7 @@ inline void nextLine(const char*& s) {
 	whitespace(s);
 }
 inline bool word(const char*& s, const char* key, int len) {
-	if(!strncmp(s, key, len)) return false;
+	if(strncmp(s, key, len) != 0) return false;
 	s += len;
 	return true;
 }
@@ -67,11 +67,10 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 
 	// Create part
 	Part* part = new Part;
-	part->parent = 0;
+	part->parent = -1;
 	part->name = 0;
 	part->channels = 0;
 	part->motion = 0;
-	part->length = 0;
 
 	if(len>0) {
 		part->name = new char[len+1];
@@ -86,8 +85,11 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 		delete [] m_parts;
 		m_parts = list;
 	}
+	int index = m_partCount;
 	m_parts[ m_partCount ] = part;
 	++m_partCount;
+	int channelCount = 0;
+	int childCount = 0;
 
 	// Part data
 	while(*data) {
@@ -95,7 +97,6 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 
 		// Reat joint offset
 		if(word(data, "OFFSET", 6)) {
-			whitespace(data);
 			readFloat(data, part->offset.x);
 			readFloat(data, part->offset.y);
 			readFloat(data, part->offset.z);
@@ -103,23 +104,25 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 
 		// Read active channels
 		else if(word(data, "CHANNELS", 8)) {
-			readInt(data, part->channels);
-			for(int i=0; i<part->channels; ++i) {
+			readInt(data, channelCount);
+			for(int i=0; i<channelCount; ++i) {
 				whitespace(data);
 				if(     word(data, "Xposition", 9)) part->channels |= Xpos << (i*3);
 				else if(word(data, "Yposition", 9)) part->channels |= Ypos << (i*3);
 				else if(word(data, "Zposition", 9)) part->channels |= Zpos << (i*3);
-				else if(word(data, "XRotation", 9)) part->channels |= Xrot << (i*3);
-				else if(word(data, "YRotation", 9)) part->channels |= Yrot << (i*3);
-				else if(word(data, "ZRotation", 9)) part->channels |= Zrot << (i*3);
-				else printf("Error: invalid channel %.10s\n", data);
+				else if(word(data, "Xrotation", 9)) part->channels |= Xrot << (i*3);
+				else if(word(data, "Yrotation", 9)) part->channels |= Yrot << (i*3);
+				else if(word(data, "Zrotation", 9)) part->channels |= Zrot << (i*3);
+				else { printf("Error: invalid channel %.10s\n", data); break; }
 			}
 		}
 
 		// Read child part
 		else if(word(data, "JOINT", 5)) {
 			Part* child = readHeirachy(data);
-			child->parent = part;
+			child->parent = index;
+			part->end = part->end + child->offset;
+			++childCount;
 		}
 
 		// End point
@@ -140,6 +143,7 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 
 		// End block
 		else if(word(data, "}", 1)) {
+			if(childCount>0) part->end *= 1.0 / childCount;
 			return part;
 		}
 
@@ -155,8 +159,10 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 
 bool BVH::load(const char* data) {
 	while(*data) {
+		whitespace(data);
+
 		// Load bone heirachy
-		if(word(data, "HEIRACHY", 8)) {
+		if(word(data, "HIERARCHY", 9)) {
 			nextLine(data);
 			if(word(data, "ROOT", 4)) {
 				m_root = readHeirachy(data);
@@ -189,6 +195,7 @@ bool BVH::load(const char* data) {
 			const vec3 xAxis(1,0,0);
 			const vec3 yAxis(0,1,0);
 			const vec3 zAxis(0,0,1);
+			const float toRad = 3.141592653592f / 180;
 
 			// Read frames
 			for(int frame=0; frame<m_frames; ++frame) {
@@ -197,7 +204,7 @@ bool BVH::load(const char* data) {
 				channel = part->channels;
 				pos = rot = vec3(0);
 				
-				while(partIndex < m_partCount) {
+				while(*data) {
 					readFloat(data, value);
 					switch(channel&0x7) {
 					case Xpos: pos.x = value; break;
@@ -211,15 +218,21 @@ bool BVH::load(const char* data) {
 
 					// Read all values for this part - process!
 					if(channel == 0) {
-						Quaternion qX(xAxis, rot.x);
-						Quaternion qY(xAxis, rot.y);
-						Quaternion qZ(xAxis, rot.z);
+						Quaternion qX(xAxis, rot.x * toRad);
+						Quaternion qY(yAxis, rot.y * toRad);
+						Quaternion qZ(zAxis, rot.z * toRad);
 
 						part->motion[frame].rotation = qZ * qX * qY;
 						part->motion[frame].offset = pos;
 
+						// Extract matrix for comparison
+						float mat[16];
+						Transform tmp = part->motion[frame];
+						tmp.toMatrix(mat);
+
 						// Next part
 						++partIndex;
+						if(partIndex == m_partCount) break;
 						part = m_parts[partIndex];
 						channel = part->channels;
 					}
@@ -233,6 +246,6 @@ bool BVH::load(const char* data) {
 			return false;
 		}
 	}
-	return true;
+	return m_root && m_frames;
 }
 

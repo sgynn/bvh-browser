@@ -10,10 +10,9 @@ class BVH {
 	enum Channel { Xpos=1, Ypos, Zpos, Xrot, Yrot, Zrot };
 
 	struct Part {
-		Part*      parent;
+		int        parent;
 		vec3       offset;
 		vec3       end;
-		float      length;
 		char*      name;
 		Transform* motion;
 		int        channels;
@@ -24,6 +23,12 @@ class BVH {
 	~BVH();
 
 	bool load(const char* data);
+
+	int         getPartCount() const		{ return m_partCount; }
+	const Part* getPart(int index) const    { return m_parts[index]; }
+	int         getFrames() const           { return m_frames; }
+	float       getFrameTime() const        { return m_frameTime; }
+
 
 	private:
 	Part* readHeirachy(const char*& data);

@@ -18,6 +18,7 @@ class vec3 {
 	vec3  cross(const vec3& v) const     { return vec3(y*v.z-z*v.y, z*v.x-x*v.z, x*v.y-y*v.x); }
 	float dot(const vec3& v) const       { return x*v.x + y*v.y + z*v.z; }
 	vec3& normalise()                    { float l=sqrt(dot(*this)); if(l!=0) *this*=1/l; return *this; }
+	float length() const                 { return sqrt(dot(*this)); }
 };
 
 // --------------------------------------------------------------------------------- //
@@ -60,6 +61,40 @@ class Transform {
 	public:
 	vec3       offset;
 	Quaternion rotation;
+	void toMatrix(float* m, float scale=1) {
+		// Quaternion to rotation matrix
+		float x2 = 2 * rotation.x;
+		float y2 = 2 * rotation.y;
+		float z2 = 2 * rotation.z;
+		float wx2 = rotation.w * x2;
+		float wy2 = rotation.w * y2;
+		float wz2 = rotation.w * z2;
+		float xx2 = rotation.x * x2;
+		float xy2 = rotation.x * y2;
+		float xz2 = rotation.x * z2;
+		float yy2 = rotation.y * y2;
+		float yz2 = rotation.y * z2;
+		float zz2 = rotation.z * z2;
+		
+		m[0] = 1-(yy2+zz2);
+		m[1] = xy2+wz2;
+		m[2] = xz2-wy2;
+		m[4] = xy2-wz2;
+		m[5] = 1-(xx2+zz2);
+		m[6] = yz2+wx2;
+		m[8] = xz2+wy2;
+		m[9] = yz2-wx2;
+		m[10] = 1-(xx2+yy2);
+
+		// position
+		m[12] = offset.x;
+		m[13] = offset.y;
+		m[14] = offset.z;
+
+		// Bottom row
+		m[3] = m[7] = m[11] = 0;
+		m[15] = 1;
+	}
 };
 
 // --------------------------------------------------------------------------------- //

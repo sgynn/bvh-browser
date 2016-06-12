@@ -18,7 +18,7 @@ void mainLoop();
 int main(int argc, char* argv[]) {
 	printf(
 		"bvh-browser (c) Sam Gynn\n"
-		"http://sam.draknek.org/projects/bvh-viewer\n"
+		"http://sam.draknek.org/projects/bvh-browser\n"
 		"Distributed under GPL\n");
 	
 	
@@ -68,6 +68,7 @@ void mainLoop() {
 	SDL_Event event;
 	uint ticks, lticks;
 	ticks = lticks = SDL_GetTicks();
+	bool rotate = false;
 
 	while(running) {
 		if(SDL_PollEvent(&event)) {
@@ -82,7 +83,13 @@ void mainLoop() {
 				break;
 
 			case SDL_MOUSEBUTTONDOWN:
+				rotate = true;
+				break;
+
 			case SDL_MOUSEBUTTONUP:
+				rotate = false;
+				break;
+
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 				if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
@@ -94,6 +101,14 @@ void mainLoop() {
 		}
 
 		else {
+			// Rotation
+			int mx, my;
+			SDL_GetRelativeMouseState(&mx, &my);
+			if(rotate) {
+				app.activeView->rotateView(-mx*0.01, my*0.01);
+			}
+			
+
 			
 			// Update all views
 			lticks = ticks;
