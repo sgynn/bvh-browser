@@ -65,8 +65,6 @@ void View::update(float time) {
 		if(m_frame > m_bvh->getFrames()) m_frame = 0;
 		updateBones(m_frame);
 	}
-
-
 }
 
 void View::render() const {

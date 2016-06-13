@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
 	app.activeView = app.mainView;
 	app.views.push_back(app.mainView);
 
-	app.mainView->loadFile("test.bvh");
+	app.mainView->loadFile(argc<2? "test1.bvh": argv[1]);
 
 	mainLoop();
 

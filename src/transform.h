@@ -99,23 +99,25 @@ class Transform {
 
 // --------------------------------------------------------------------------------- //
 
+#include <cstdio>
 
 inline vec3 lerp(const vec3& a, const vec3& b, float t) {
 	return a + (b-a) * t;
 }
 inline Quaternion slerp(const Quaternion& a, const Quaternion& b, float t) {
 	float c = a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
-	c = c<-1? -1: c>1? 1: c;	// clamp -1,1
-	float theta = acos(c);
+	if(c <= -1 || c >= 1) return a;
+	float m = c<0? -1: 1;
+	float theta = acos(c*m);
 	if(theta != 0.f) {
 		float d = 1.f / sin(theta);
 		float u = sin((1.f - t) * theta) * d;
-		float v = sin(t * theta) * d;
-		if(c < 0) c = -c;
+		float v = sin(t * theta) * d * m;
 		return Quaternion(a.x*u + b.x*v, a.y*u + b.y*v, a.z*u + b.z*v, a.w*u + b.w*v);
 	}
 	return a;
 }
+
 
 #endif
 
