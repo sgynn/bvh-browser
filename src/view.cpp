@@ -43,24 +43,81 @@ void View::resize(int x, int y, int w, int h) {
 	m_height = h;
 	updateProjection();
 }
+
+void View::setCamera(float yaw, float pitch, float zoom) {
+	vec3 d;
+	float cp = cos(pitch);
+	d.x = sin(yaw) * cp;
+	d.y = sin(pitch);
+	d.z = cos(yaw) * cp;
+	m_camera = m_target + d * zoom;
+	updateCamera();
+}
 void View::rotateView(float yaw, float pitch) {
 	vec3 d = m_camera - m_target;
-	float length = d.length();
+	float zoom = d.length();
 	float oldYaw = atan2(d.x, d.z);
 	float oldPitch = atan2(d.y, sqrt(d.x*d.x+d.z*d.z));
-
-	float cp = cos(pitch+oldPitch);
-	d.x = sin(yaw+oldYaw) * cp;
-	d.y = sin(pitch+oldPitch);
-	d.z = cos(yaw+oldYaw) * cp;
-	d *= length;
-	m_camera = m_target + d;
+	setCamera(oldYaw+yaw, oldPitch+pitch, zoom);
+}
+void View::zoomView(float mult) {
+	vec3 d = m_camera - m_target;
+	m_camera = m_target + d * mult;
 	updateCamera();
 }
 
+inline float View::zoomToFit(const vec3& point, const vec3& dir, const vec3* n, float* d) {
+	float shift = 0;
+	for(int i=0; i<4; ++i) {
+		// Distance to plane in dir
+		float denom = n[i].dot(dir);
+		float t = d[i] - n[i].dot(point) / denom;
+		if(t>shift) shift = t;
+	}
+	// update frustum
+	if(shift > 0) {
+		m_camera = m_camera - dir * shift;
+		for(int i=0; i<4; ++i) d[i] = n[i].dot(m_camera);
+	}
+	return shift;
+}
+
+void View::autoZoom() {
+	vec3 dir = m_target - m_camera;
+	dir.normalise();
+	m_camera = m_target;
+
+	vec3 n[4];
+	float d[4];
+	float m[16];
+	// Get frustum planes
+	multMatrix(m_projectionMatrix, m_viewMatrix, m);
+	n[0] = vec3(m[3]+m[0], m[7]+m[4], m[11]+m[8]);
+	n[1] = vec3(m[3]-m[0], m[7]-m[4], m[11]-m[8]);
+	n[2] = vec3(m[3]+m[1], m[7]+m[5], m[11]+m[9]);
+	n[3] = vec3(m[3]-m[1], m[7]-m[5], m[11]-m[9]);
+	for(int i=0; i<4; ++i) d[i] = n[i].dot(m_camera);
+
+	// Zoom out to fit points
+	float shift = 0;
+	for(int i=0; i<m_bvh->getPartCount(); ++i) {
+		shift += zoomToFit( m_final[i].offset, dir, n, d);
+	}
+	for(int i=0; i<m_bvh->getFrames(); ++i) {
+		shift += zoomToFit(m_bvh->getPart(0)->motion[i].offset, dir, n, d);
+	}
+	if(shift == 0) m_camera = m_target - dir;
+	updateCamera();
+}
+
+void View::togglePause() {
+	m_paused = !m_paused;
+}
+
+
 void View::update(float time) {
 	
-	if(m_bvh) {
+	if(m_bvh && !m_paused) {
 		m_frame += time / m_bvh->getFrameTime();
 		if(m_frame > m_bvh->getFrames()) m_frame = 0;
 		updateBones(m_frame);
@@ -90,11 +147,10 @@ void View::render() const {
 		glPolygonOffset(-1,-1);
 		float matrix[16];
 		for(int i=0; i<m_bvh->getPartCount(); ++i) {
-			float s = m_bvh->getPart(i)->end.y;
-			m_final[i].toMatrix(matrix, s);
+			m_final[i].toMatrix(matrix);
 
+			/*
 			const BVH::Part* part = m_bvh->getPart(i);
-
 			glPushMatrix();
 			glMultMatrixf(matrix);
 			glBegin(GL_LINES);
@@ -102,15 +158,25 @@ void View::render() const {
 			glVertex3fv(&part->end.x);
 			glEnd();
 			glPopMatrix();
+			*/
 
 
-
-
-			/*
 			glPushMatrix();
 			glMultMatrixf(matrix);
-			glScalef(s,s,s);
 
+			// Rotate to use z axis mesh
+			const vec3 zAxis(0,0,1);
+			vec3 dir = m_bvh->getPart(i)->end;
+			float length = dir.length();
+			dir *= 1.0 / length;
+			if(dir.z < 0.999) {
+				vec3 n = dir.cross(zAxis);
+				float d = dir.dot(zAxis);
+				glRotatef( -acos(d) * 180/3.141592653592, n.x, n.y, n.z );
+			}
+			glScalef(length, length, length);
+
+			// Draw bone mesh
 			glPolygonMode(GL_FRONT, GL_LINE);
 			glColor4f(0.2, 0, 0.5, 1);
 			drawBone();
@@ -118,7 +184,6 @@ void View::render() const {
 			glColor4f(0.5, 0, 1, 1);
 			drawBone();
 			glPopMatrix();
-			*/
 		}
 	}
 

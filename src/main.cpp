@@ -49,6 +49,8 @@ int main(int argc, char* argv[]) {
 
 	SDL_WM_SetCaption("bvh-viewer", 0);
 
+	glEnable(GL_DEPTH_TEST);
+
 	// Set up views
 	app.mainView = new View(0,0,width,height);
 	app.activeView = app.mainView;
@@ -83,6 +85,8 @@ void mainLoop() {
 				break;
 
 			case SDL_MOUSEBUTTONDOWN:
+				if(event.button.button == SDL_BUTTON_WHEELUP) app.activeView->zoomView(0.9);
+				if(event.button.button == SDL_BUTTON_WHEELDOWN) app.activeView->zoomView(1.1);
 				rotate = true;
 				break;
 
@@ -91,6 +95,9 @@ void mainLoop() {
 				break;
 
 			case SDL_KEYDOWN:
+				if(event.key.keysym.sym == SDLK_z) app.activeView->autoZoom();
+				if(event.key.keysym.sym == SDLK_SPACE) app.activeView->togglePause();
+
 			case SDL_KEYUP:
 				if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
 				break;

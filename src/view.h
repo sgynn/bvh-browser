@@ -14,10 +14,14 @@ class View {
 
 	bool loadFile(const char* file);
 	void resize(int x, int y, int w, int h);
+	void setCamera(float yaw, float pitch, float zoom);
 	void rotateView(float yaw, float pitch);
+	void zoomView(float mult);
+	void autoZoom();
 
 	void render() const;
 	void update(float time);
+	void togglePause();
 
 	State getState() const;
 
@@ -41,6 +45,7 @@ class View {
 	void updateBones(float frame);
 	void updateCamera();
 	void updateProjection(float fov=90);
+	float zoomToFit(const vec3& point, const vec3& dir, const vec3* n, float* d);
 	static void drawGrid();
 	static void drawBone();
 
