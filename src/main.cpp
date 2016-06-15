@@ -2,16 +2,49 @@
 #include <GL/gl.h>
 #include <cstdio>
 #include <vector>
+#include <string>
 
 #include "view.h"
+#include "directory.h"
 
 struct App {
 	View* mainView;
 	View* activeView;
 	std::vector<View*> views;
+	std::vector< std::string > paths;
+	std::vector< std::string > files;
 } app;
 
+// -------------------------------------------------------------------------------------- //
 
+void addFile(const char* f) {
+	app.files.push_back(f);
+	printf("File: %s\n", f);
+}
+void addZip(const char*) {
+}
+void addDirectory(const char* dir, bool recursive) {
+	printf("Path: %s\n", dir);
+	for(size_t i=0; i<app.paths.size(); ++i) {
+		if(app.paths[i] == dir) return;
+	}
+
+	char buffer[2048];
+	Directory d( dir );
+	for(Directory::iterator i=d.begin(); i!=d.end(); ++i) {
+		if(i->type == Directory::DIRECTORY && recursive && i->name[0]!='.') {
+			snprintf(buffer, 2048, "%s%s", dir, i->name);
+			addDirectory(buffer, true);
+		}
+		else if(strcmp(i->name + i->ext, "bvh")==0) {
+			snprintf(buffer, 2048, "%s/%s", dir, i->name);
+			addFile(buffer);
+		}
+	}
+	
+}
+
+// -------------------------------------------------------------------------------------- //
 
 void mainLoop();
 
@@ -25,7 +58,20 @@ int main(int argc, char* argv[]) {
 	// Parse arguments
 	for(int i=1; i<argc; ++i) {
 		// valid: bvh, zip, directory
+		if(isDirectory(argv[i])) {
+			addDirectory( argv[i], true );
 
+		} else {
+			char* file = argv[i];
+			addFile(file);
+
+/*
+			int len = strlen(file);
+			for(char* c=file+len; c>=file && *c!='/' && *c != '\\'; --c) *c = 0;
+			if(file[0]==0) file[0] = '.';
+			addDirectory(file, false);
+*/
+		}
 	}
 
 
@@ -56,7 +102,9 @@ int main(int argc, char* argv[]) {
 	app.activeView = app.mainView;
 	app.views.push_back(app.mainView);
 
-	app.mainView->loadFile(argc<2? "test1.bvh": argv[1]);
+	if(!app.files.empty()) {
+		app.mainView->loadFile(app.files[0].c_str());
+	}
 
 	mainLoop();
 
@@ -71,6 +119,7 @@ void mainLoop() {
 	uint ticks, lticks;
 	ticks = lticks = SDL_GetTicks();
 	bool rotate = false;
+	int currentFile = 0;
 
 	while(running) {
 		if(SDL_PollEvent(&event)) {
@@ -97,6 +146,17 @@ void mainLoop() {
 			case SDL_KEYDOWN:
 				if(event.key.keysym.sym == SDLK_z) app.activeView->autoZoom();
 				if(event.key.keysym.sym == SDLK_SPACE) app.activeView->togglePause();
+
+				if(app.files.size() > 1) {
+					int m = 0;
+					if(event.key.keysym.sym == SDLK_LEFT) m = -1;
+					if(event.key.keysym.sym == SDLK_RIGHT) m = 1;
+					if(m!=0) {
+						currentFile = (currentFile + m + app.files.size()) % app.files.size();
+						printf("Load %d: %s\n", currentFile, app.files[currentFile].c_str());
+						app.mainView->loadFile( app.files[currentFile].c_str() );
+					}
+				}
 
 			case SDL_KEYUP:
 				if(event.key.keysym.sym == SDLK_ESCAPE) running = false;

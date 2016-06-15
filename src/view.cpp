@@ -19,7 +19,7 @@ View::~View() {
 
 bool View::loadFile(const char* file) {
 	FILE* fp = fopen(file, "r");
-	if(!fp) return false;
+	if(!fp) { printf("Failed\n"); return false; }
 	fseek(fp, 0, SEEK_END);
 	int len = ftell(fp);
 	rewind(fp);
@@ -28,11 +28,12 @@ bool View::loadFile(const char* file) {
 	content[len] = 0;
 	fclose(fp);
 	// Read bvh
+	if(m_bvh) delete m_bvh;
 	m_bvh = new BVH();
 	bool r = m_bvh->load(content);
 	m_final = new Transform[ m_bvh->getPartCount() ];
-	updateBones(111.5);
-	
+	updateBones(0);
+	m_frame = 0;
 	return r;
 }
 
