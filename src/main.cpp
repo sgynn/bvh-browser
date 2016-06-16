@@ -8,6 +8,7 @@
 #include "directory.h"
 
 struct App {
+	int currentFile;
 	View* mainView;
 	View* activeView;
 	std::vector<View*> views;
@@ -54,6 +55,7 @@ int main(int argc, char* argv[]) {
 		"http://sam.draknek.org/projects/bvh-browser\n"
 		"Distributed under GPL\n");
 	
+	app.currentFile = 0;
 	
 	// Parse arguments
 	for(int i=1; i<argc; ++i) {
@@ -62,15 +64,19 @@ int main(int argc, char* argv[]) {
 			addDirectory( argv[i], true );
 
 		} else {
-			char* file = argv[i];
-			addFile(file);
-
-/*
+			char file[1024];
+			strcpy(file, argv[i]);
 			int len = strlen(file);
 			for(char* c=file+len; c>=file && *c!='/' && *c != '\\'; --c) *c = 0;
 			if(file[0]==0) file[0] = '.';
 			addDirectory(file, false);
-*/
+			// Initial index
+			for(size_t j=0; j<app.files.size(); ++j) {
+				if(app.files[j] == argv[i]) {
+					app.currentFile=j;
+					break;
+				}
+			}
 		}
 	}
 
@@ -104,6 +110,7 @@ int main(int argc, char* argv[]) {
 
 	if(!app.files.empty()) {
 		app.mainView->loadFile(app.files[0].c_str());
+		app.mainView->autoZoom();
 	}
 
 	mainLoop();
@@ -119,7 +126,6 @@ void mainLoop() {
 	uint ticks, lticks;
 	ticks = lticks = SDL_GetTicks();
 	bool rotate = false;
-	int currentFile = 0;
 
 	while(running) {
 		if(SDL_PollEvent(&event)) {
@@ -152,9 +158,9 @@ void mainLoop() {
 					if(event.key.keysym.sym == SDLK_LEFT) m = -1;
 					if(event.key.keysym.sym == SDLK_RIGHT) m = 1;
 					if(m!=0) {
-						currentFile = (currentFile + m + app.files.size()) % app.files.size();
-						printf("Load %d: %s\n", currentFile, app.files[currentFile].c_str());
-						app.mainView->loadFile( app.files[currentFile].c_str() );
+						app.currentFile = (app.currentFile + m + app.files.size()) % app.files.size();
+						printf("Load %d: %s\n", app.currentFile, app.files[app.currentFile].c_str());
+						app.mainView->loadFile( app.files[app.currentFile].c_str() );
 					}
 				}
 
