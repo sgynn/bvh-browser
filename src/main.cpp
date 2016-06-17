@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
 
 	atexit(SDL_Quit);
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1);
-	if(!SDL_SetVideoMode( width, height, 32, SDL_OPENGL)) {
+	if(!SDL_SetVideoMode( width, height, 32, SDL_OPENGL | SDL_RESIZABLE)) {
 		fprintf(stderr, "Unable to create window: %s\n", SDL_GetError());
 		SDL_Quit();
 		return 2;
@@ -134,6 +134,9 @@ void mainLoop() {
 				running = false;
 				break;
 			case SDL_VIDEORESIZE:
+				SDL_SetVideoMode( event.resize.w, event.resize.h, 32, SDL_OPENGL | SDL_RESIZABLE);
+				app.mainView->resize(0, 0, event.resize.w, event.resize.h);
+				app.mainView->autoZoom();
 				break;
 
 			case SDL_ACTIVEEVENT:
