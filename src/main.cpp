@@ -3,32 +3,91 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <set>
 
 #include "view.h"
 #include "directory.h"
+
+#include "miniz.c"
+
+struct FileEntry {
+	std::string directory;	// File directory or zip file
+	std::string name;		// File name
+	std::string archive;	// Directory is a zip file
+	int         zipIndex;	// Index of file in archive
+};
 
 struct App {
 	int currentFile;
 	View* mainView;
 	View* activeView;
 	std::vector<View*> views;
-	std::vector< std::string > paths;
-	std::vector< std::string > files;
+	std::set< std::string > paths;
+	std::vector< FileEntry > files;
 } app;
 
 // -------------------------------------------------------------------------------------- //
 
+inline bool endsWith(const char* s, const char* end) {
+	int sl = strlen(s);
+	int el = strlen(end);
+	return sl >= el && strcmp(s+sl-el, end) == 0;
+}
+inline const char* getName(const char* path) {
+	const char* c = strrchr(path, '/');
+	if(!c) c = strrchr(path, '\\');
+	return c? c + 1: path;
+}
+inline std::string getDirectory(const char* path) {
+	const char* c = strrchr(path, '/');
+	if(!c) c = strrchr(path, '\\');
+	return c? std::string(path, c-path): std::string(".");
+}
+
+// -------------------------------------------------------------------------------------- //
+
 void addFile(const char* f) {
-	app.files.push_back(f);
+	FileEntry file;
+	file.name = getName(f);
+	file.directory = getDirectory(f);
+	app.files.push_back(file);
 	printf("File: %s\n", f);
 }
-void addZip(const char*) {
+int addZip(const char* f) {
+	mz_zip_archive zipFile;
+	memset(&zipFile, 0, sizeof(zipFile));
+	mz_bool status = mz_zip_reader_init_file(&zipFile, f, 0);
+	if(!status) {
+		printf("Failed to open zip file %s\n", f);
+		return -1;
+	}
+	// read directory info
+	int files = mz_zip_reader_get_num_files(&zipFile);
+	for(int i=0; i<files; ++i) {
+		mz_zip_archive_file_stat stat;
+		if(mz_zip_reader_file_stat(&zipFile, i, &stat)) {
+			if( endsWith(stat.m_filename, ".bvh") ) {
+				printf("File %s\n", stat.m_filename);
+				FileEntry file;
+				file.directory = getDirectory(stat.m_filename);
+				file.name = getName(stat.m_filename);
+				file.archive = f;
+				file.zipIndex = i;
+				app.files.push_back(file);
+			}
+		} else {
+			printf("Failed to get file info from archive %s\n", f);
+			mz_zip_reader_end(&zipFile);
+			return -1;
+		}
+	}
+
+	mz_zip_reader_end(&zipFile);
+	return 0;
 }
 void addDirectory(const char* dir, bool recursive) {
 	printf("Path: %s\n", dir);
-	for(size_t i=0; i<app.paths.size(); ++i) {
-		if(app.paths[i] == dir) return;
-	}
+	if(app.paths.find(dir) != app.paths.end()) return;
 
 	char buffer[2048];
 	Directory d( dir );
@@ -42,8 +101,37 @@ void addDirectory(const char* dir, bool recursive) {
 			addFile(buffer);
 		}
 	}
-	
 }
+
+
+// -------------------------------------------------------------------------------------- //
+
+bool loadFile(const FileEntry& file, View* view) {
+	printf("Load %s\n", file.name.c_str());
+	if(file.archive.empty()) {
+		return view->loadFile( (file.directory + "/" + file.name).c_str() );
+
+	} else {
+		bool result = false;
+		mz_zip_archive zipFile;
+		memset(&zipFile, 0, sizeof(zipFile));
+		mz_bool status = mz_zip_reader_init_file(&zipFile, file.archive.c_str(), 0);
+		if(!status) return false;
+		size_t size;
+		void* p = mz_zip_reader_extract_to_heap(&zipFile, file.zipIndex, &size, 0);
+		if(p) {
+			((char*)p)[size-1] = 0;
+			BVH* bvh = new BVH();
+			result = bvh->load((const char*)p);
+			view->setBVH(result? bvh: 0);
+			if(!result) delete bvh;
+			mz_free(p);
+		}
+		mz_zip_reader_end(&zipFile);
+		return result;
+	}
+}
+
 
 // -------------------------------------------------------------------------------------- //
 
@@ -63,16 +151,17 @@ int main(int argc, char* argv[]) {
 		if(isDirectory(argv[i])) {
 			addDirectory( argv[i], true );
 
+		} else if(endsWith(argv[i], ".zip")) {
+			addZip(argv[i]);
+
 		} else {
-			char file[1024];
-			strcpy(file, argv[i]);
-			int len = strlen(file);
-			for(char* c=file+len; c>=file && *c!='/' && *c != '\\'; --c) *c = 0;
-			if(file[0]==0) file[0] = '.';
-			addDirectory(file, false);
+			std::string dir = getDirectory(argv[i]);
+			addDirectory(dir.c_str(), false);
+
 			// Initial index
+			const char* name = getName(argv[i]);
 			for(size_t j=0; j<app.files.size(); ++j) {
-				if(app.files[j] == argv[i]) {
+				if(app.files[j].name == name) {
 					app.currentFile=j;
 					break;
 				}
@@ -109,7 +198,7 @@ int main(int argc, char* argv[]) {
 	app.views.push_back(app.mainView);
 
 	if(!app.files.empty()) {
-		app.mainView->loadFile(app.files[0].c_str());
+		loadFile(app.files[app.currentFile], app.mainView);
 		app.mainView->autoZoom();
 	}
 
@@ -162,8 +251,7 @@ void mainLoop() {
 					if(event.key.keysym.sym == SDLK_RIGHT) m = 1;
 					if(m!=0) {
 						app.currentFile = (app.currentFile + m + app.files.size()) % app.files.size();
-						printf("Load %d: %s\n", app.currentFile, app.files[app.currentFile].c_str());
-						app.mainView->loadFile( app.files[app.currentFile].c_str() );
+						loadFile(app.files[ app.currentFile], app.mainView);
 					}
 				}
 

@@ -12,6 +12,7 @@ class View {
 	View(int x, int y, int w, int h);
 	~View();
 
+	void setBVH(BVH*);
 	bool loadFile(const char* file);
 	void resize(int x, int y, int w, int h);
 	void setCamera(float yaw, float pitch, float zoom);

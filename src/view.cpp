@@ -28,13 +28,27 @@ bool View::loadFile(const char* file) {
 	content[len] = 0;
 	fclose(fp);
 	// Read bvh
-	if(m_bvh) delete m_bvh;
-	m_bvh = new BVH();
-	bool r = m_bvh->load(content);
-	m_final = new Transform[ m_bvh->getPartCount() ];
-	updateBones(0);
-	m_frame = 0;
+	BVH* bvh = new BVH();
+	int r = bvh->load(content);
+	if(r) {
+		setBVH(bvh);
+	} else {
+		setBVH(0);
+		delete bvh;
+	}
 	return r;
+}
+void View::setBVH(BVH* bvh) {
+	if(m_bvh) {
+		delete m_bvh;
+		delete [] m_final;
+	}
+	m_bvh = bvh;
+	m_frame = 0;
+	if(bvh) {
+		m_final = new Transform[ m_bvh->getPartCount() ];
+		updateBones(0);
+	}
 }
 
 void View::resize(int x, int y, int w, int h) {
@@ -84,6 +98,8 @@ inline float View::zoomToFit(const vec3& point, const vec3& dir, const vec3* n, 
 }
 
 void View::autoZoom() {
+	if(!m_bvh) return;
+
 	vec3 dir = m_target - m_camera;
 	dir.normalise();
 	m_camera = m_target;

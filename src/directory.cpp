@@ -112,9 +112,6 @@ int Directory::scan() {
 	}
 	#endif
 
-	printf("Sort: %lu\n", m_files.size());
-	for(size_t i=0; i<m_files.size(); ++i) printf("%s\n",m_files[i].name);
-	printf("\n");
 	std::sort(m_files.begin(), m_files.end(), SortFiles(&m_files[0]));
 	return m_files.size();
 }
