@@ -24,6 +24,8 @@ struct App {
 	std::vector<View*> views;
 	std::set< std::string > paths;
 	std::vector< FileEntry > files;
+	int width, height;
+	int tileSize;
 } app;
 
 // -------------------------------------------------------------------------------------- //
@@ -171,8 +173,9 @@ int main(int argc, char* argv[]) {
 
 
 	// setup SDL window
-	int width = 1280;
-	int height = 1024;
+	app.width = 1280;
+	app.height = 1024;
+	app.tileSize = 256;
 
 	int r = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	if(r<0) {
@@ -182,7 +185,7 @@ int main(int argc, char* argv[]) {
 
 	atexit(SDL_Quit);
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1);
-	if(!SDL_SetVideoMode( width, height, 32, SDL_OPENGL | SDL_RESIZABLE)) {
+	if(!SDL_SetVideoMode( app.width, app.height, 32, SDL_OPENGL | SDL_RESIZABLE)) {
 		fprintf(stderr, "Unable to create window: %s\n", SDL_GetError());
 		SDL_Quit();
 		return 2;
@@ -193,7 +196,7 @@ int main(int argc, char* argv[]) {
 	glEnable(GL_DEPTH_TEST);
 
 	// Set up views
-	app.mainView = new View(0,0,width,height);
+	app.mainView = new View(0,0,app.width,app.height);
 	app.activeView = app.mainView;
 	app.views.push_back(app.mainView);
 
@@ -206,6 +209,44 @@ int main(int argc, char* argv[]) {
 
 	return 0;
 
+}
+
+void setLayout(int layout) {
+	size_t viewIndex, fileIndex;
+	switch(layout) {
+	case 0:	// Single view
+		for(size_t i=0; i<app.views.size(); ++i) {
+			if(app.views[i] != app.mainView) app.views[i]->setVisible(false);
+		}
+		app.mainView->setVisible(true);
+		app.mainView->resize(0,0,app.width,app.height);
+		app.mainView->autoZoom();
+		break;
+
+	case 1: // Split view
+	case 2: // Tile view
+		viewIndex = 0;
+		fileIndex = 0;
+		app.mainView->setVisible(false);
+		for(int y=0; fileIndex < app.files.size(); ++y) {
+			if(y > app.height * app.tileSize) break;
+			int w = app.width / app.tileSize;
+			for(int x=0; x<w; ++x) {
+				if(app.views[viewIndex] == app.mainView) ++viewIndex;
+				while(app.views.size() < viewIndex+1) app.views.push_back(new View(0,0,1,1));
+				View* view = app.views[viewIndex];
+				float py = app.height - y*app.tileSize - app.tileSize;	// start from top
+				view->resize(x*app.tileSize, py, app.tileSize, app.tileSize);
+				loadFile(app.files[fileIndex], view);
+				view->autoZoom();
+				++viewIndex;
+				++fileIndex;
+				if(fileIndex == app.files.size()) return;
+			}
+		}
+		break;
+		
+	}
 }
 
 
@@ -223,7 +264,9 @@ void mainLoop() {
 				running = false;
 				break;
 			case SDL_VIDEORESIZE:
-				SDL_SetVideoMode( event.resize.w, event.resize.h, 32, SDL_OPENGL | SDL_RESIZABLE);
+				app.width = event.resize.w;
+				app.height = event.resize.h;
+				SDL_SetVideoMode( app.width, app.height, 32, SDL_OPENGL | SDL_RESIZABLE);
 				app.mainView->resize(0, 0, event.resize.w, event.resize.h);
 				app.mainView->autoZoom();
 				break;
@@ -244,6 +287,7 @@ void mainLoop() {
 			case SDL_KEYDOWN:
 				if(event.key.keysym.sym == SDLK_z) app.activeView->autoZoom();
 				if(event.key.keysym.sym == SDLK_SPACE) app.activeView->togglePause();
+				if(event.key.keysym.sym == SDLK_t) setLayout(2);
 
 				if(app.files.size() > 1) {
 					int m = 0;
@@ -284,6 +328,7 @@ void mainLoop() {
 			}
 
 			// Render everything
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			for(size_t i=0; i<app.views.size(); ++i) {
 				app.views[i]->render();
 			}

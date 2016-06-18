@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), m_paused(false), m_state(EMPTY), m_bvh(0) {
+View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), m_visible(true), m_paused(false), m_state(EMPTY), m_bvh(0) {
 	m_near = 0.1f;
 	m_far = 1000.f;
 	m_frame = 0;
@@ -49,6 +49,10 @@ void View::setBVH(BVH* bvh) {
 		m_final = new Transform[ m_bvh->getPartCount() ];
 		updateBones(0);
 	}
+}
+
+void View::setVisible(bool v) {
+	m_visible = v;
 }
 
 void View::resize(int x, int y, int w, int h) {
@@ -134,7 +138,7 @@ void View::togglePause() {
 
 void View::update(float time) {
 	
-	if(m_bvh && !m_paused) {
+	if(m_bvh && !m_paused && m_visible) {
 		m_frame += time / m_bvh->getFrameTime();
 		if(m_frame > m_bvh->getFrames()) m_frame = 0;
 		updateBones(m_frame);
@@ -142,8 +146,8 @@ void View::update(float time) {
 }
 
 void View::render() const {
+	if(!m_visible) return;
 	glViewport(m_x, m_y, m_width, m_height);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glMatrixMode(GL_PROJECTION);
 	glLoadMatrixf(m_projectionMatrix);
 	glMatrixMode(GL_MODELVIEW);
@@ -204,8 +208,18 @@ void View::render() const {
 		}
 	}
 
+	// Border?
+	glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glColor4f(0.3, 0.3, 0.3, 1);
+	static const float border[] = { -1,-1, 1,-1, 1,1, -1,1, -1,-1 };
+	glVertexPointer(2, GL_FLOAT, 0, border);
+	glDrawArrays(GL_LINE_STRIP, 0, 5);
+
 
 	glDisableClientState(GL_VERTEX_ARRAY);
+
 }
 
 // ------------------------------------------------- //

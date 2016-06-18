@@ -19,6 +19,7 @@ class View {
 	void rotateView(float yaw, float pitch);
 	void zoomView(float mult);
 	void autoZoom();
+	void setVisible(bool v);
 
 	void render() const;
 	void update(float time);
@@ -28,8 +29,9 @@ class View {
 
 	protected:
 	int m_x, m_y, m_width, m_height;
-	char m_title[128];
-	bool m_paused;
+	char  m_title[128];
+	bool  m_visible;
+	bool  m_paused;
 	State m_state;
 
 	BVH*       m_bvh;
