@@ -1,4 +1,4 @@
-#include <SDL/SDL.h>
+#include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include <cstdio>
 #include <vector>
@@ -18,14 +18,15 @@ struct FileEntry {
 };
 
 struct App {
-	int currentFile;
-	View* mainView;
-	View* activeView;
-	std::vector<View*> views;
-	std::set< std::string > paths;
-	std::vector< FileEntry > files;
-	int width, height;
-	int tileSize;
+	SDL_Window* window;					// app window
+	int         currentFile;			// current file of main view
+	View*       mainView;				// main view
+	View*       activeView;				// view accepting input
+	std::vector<View*> views;			// all views
+	std::set< std::string > paths;		// directorys - to avoid duplication
+	std::vector< FileEntry > files;		// all bvh files found
+	int width, height;					// window size
+	int tileSize;						// tile size for tiled view
 } app;
 
 // -------------------------------------------------------------------------------------- //
@@ -176,6 +177,8 @@ int main(int argc, char* argv[]) {
 	app.width = 1280;
 	app.height = 1024;
 	app.tileSize = 256;
+	const char* title = "bvh-browser";
+	int flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL;
 
 	int r = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	if(r<0) {
@@ -185,13 +188,14 @@ int main(int argc, char* argv[]) {
 
 	atexit(SDL_Quit);
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1);
-	if(!SDL_SetVideoMode( app.width, app.height, 32, SDL_OPENGL | SDL_RESIZABLE)) {
+	app.window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, app.width, app.height, flags);
+	if(!app.window) {
 		fprintf(stderr, "Unable to create window: %s\n", SDL_GetError());
 		SDL_Quit();
 		return 2;
 	}
 
-	SDL_WM_SetCaption("bvh-viewer", 0);
+	SDL_GL_CreateContext(app.window);
 
 	glEnable(GL_DEPTH_TEST);
 
@@ -263,20 +267,25 @@ void mainLoop() {
 			case SDL_QUIT:
 				running = false;
 				break;
-			case SDL_VIDEORESIZE:
-				app.width = event.resize.w;
-				app.height = event.resize.h;
-				SDL_SetVideoMode( app.width, app.height, 32, SDL_OPENGL | SDL_RESIZABLE);
-				app.mainView->resize(0, 0, event.resize.w, event.resize.h);
-				app.mainView->autoZoom();
+
+			case SDL_WINDOWEVENT:
+				switch(event.window.event) {
+				case SDL_WINDOWEVENT_RESIZED:
+				case SDL_WINDOWEVENT_SIZE_CHANGED:
+					app.width = event.window.data1;
+					app.height = event.window.data2;
+					app.mainView->resize(0, 0, app.width, app.height);
+					app.mainView->autoZoom();
+					break;
+
+				}
 				break;
 
-			case SDL_ACTIVEEVENT:
+			case SDL_MOUSEWHEEL:
+				app.activeView->zoomView( 1.0 + event.wheel.y * 0.1);
 				break;
 
 			case SDL_MOUSEBUTTONDOWN:
-				if(event.button.button == SDL_BUTTON_WHEELUP) app.activeView->zoomView(0.9);
-				if(event.button.button == SDL_BUTTON_WHEELDOWN) app.activeView->zoomView(1.1);
 				rotate = true;
 				break;
 
@@ -337,7 +346,7 @@ void mainLoop() {
 			uint t = ticks - lticks;
 			if(t < 10) SDL_Delay(10 - t);
 
-			SDL_GL_SwapBuffers();
+			SDL_GL_SwapWindow(app.window);
 		}
 	}
 }

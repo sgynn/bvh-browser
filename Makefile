@@ -2,7 +2,7 @@ exec = bvh-browser
 
 OBJDIR = obj
 CFLAGS =  -g -Wall -Isrc $(shell sdl-config --cflags)
-LDFLAGS = $(shell sdl-config --libs) -lGL -lm
+LDFLAGS = $(shell sdl2-config --libs) -lGL -lm
 
 headers = $(wildcard src/*.h src/*/*.h)
 sources = $(wildcard src/*.cpp src/*/*.cpp)
