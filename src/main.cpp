@@ -33,6 +33,7 @@ struct App {
 	View*       mainView;				// main view
 	View*       activeView;				// view accepting input
 	AppMode     mode;					// current mode
+	int         scrollOffset;			// Scroll offset in tile view
 	std::vector<View*> views;			// all views
 	std::set< std::string > paths;		// directorys - to avoid duplication
 	std::vector< FileEntry > files;		// all bvh files found
@@ -223,6 +224,7 @@ int main(int argc, char* argv[]) {
 	
 	app.currentFile = 0;
 	app.mode = VIEW_SINGLE;
+	app.scrollOffset = 0;
 	
 	// Parse arguments
 	for(int i=1; i<argc; ++i) {
@@ -303,8 +305,8 @@ void setupTiles() {
 
 		// Position view
 		int x = i % columns * app.tileSize;
-		int y = app.height - app.tileSize - i / columns * app.tileSize;
-		view->resize(x, y, app.tileSize, app.tileSize);
+		int y = app.height - app.tileSize - i / columns * app.tileSize - app.scrollOffset;
+		view->resize(x, y, app.tileSize, app.tileSize, true);
 		view->setVisible(true);
 
 		// Load data
@@ -338,6 +340,7 @@ void mainLoop() {
 	uint ticks, lticks;
 	ticks = lticks = SDL_GetTicks();
 	bool rotate = false;
+	bool moved = false;
 
 	// start load thread
 	app.loadThread.begin(&loadThreadFunc, &running);
@@ -372,6 +375,9 @@ void mainLoop() {
 			case SDL_MOUSEWHEEL:
 				if(app.mode == VIEW_TILES) {
 					int offset = event.wheel.y * 48;
+					if(offset>0 && app.scrollOffset >=0) break;
+
+					app.scrollOffset += offset;
 					for(size_t i=0; i<app.views.size(); ++i) {
 						app.views[i]->move(0, -offset);
 					}
@@ -382,20 +388,26 @@ void mainLoop() {
 				break;
 
 			case SDL_MOUSEBUTTONDOWN:
+				moved = false;
 				rotate = true;
 				break;
 
 			case SDL_MOUSEBUTTONUP:
 				rotate = false;
-				if(app.mode == VIEW_TILES) {
-					int mx = event.button.x;
-					int my = app.height - event.button.y;
-					for(size_t i=0; i<app.views.size(); ++i) {
-						if(app.views[i]->contains(mx, my)) {
-							app.activeView = app.views[i];
-							setLayout(VIEW_SINGLE);
-							break;
+				if(!moved) {
+					if(app.mode == VIEW_TILES) {
+						int mx = event.button.x;
+						int my = app.height - event.button.y;
+						for(size_t i=0; i<app.views.size(); ++i) {
+							if(app.views[i]->contains(mx, my)) {
+								app.activeView = app.views[i];
+								setLayout(VIEW_SINGLE);
+								break;
+							}
 						}
+					}
+					else {
+						setLayout(VIEW_TILES);
 					}
 				}
 				break;
@@ -430,6 +442,7 @@ void mainLoop() {
 			SDL_GetRelativeMouseState(&mx, &my);
 			if(rotate) {
 				app.activeView->rotateView(-mx*0.01, my*0.01);
+				moved |= mx || my;
 			}
 			
 
@@ -446,8 +459,9 @@ void mainLoop() {
 			// Render everything
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			for(size_t i=0; i<app.views.size(); ++i) {
-				app.views[i]->render();
+				if(app.views[i] != app.activeView) app.views[i]->render();
 			}
+			if(app.activeView) app.activeView->render();
 
 			// Limit to 60fps?
 			uint t = ticks - lticks;

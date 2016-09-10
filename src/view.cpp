@@ -149,7 +149,7 @@ View::State View::getState() const { return m_state; }
 
 void View::update(float time) {
 	if(m_tx != m_x || m_twidth != m_width) {
-		const float speed = 128;
+		const float speed = 8000 * time;
 		int dx = m_tx - m_x;
 		int dy = m_ty - m_y;
 		int dw = m_twidth - m_width;
@@ -166,6 +166,7 @@ void View::update(float time) {
 		m_y = lerp(m_y, m_ty, t);
 		m_width  = lerp(m_width, m_twidth,   t);
 		m_height = lerp(m_height, m_theight, t);
+		updateProjection();
 	}
 	
 	if(m_bvh && !m_paused && m_visible) {
