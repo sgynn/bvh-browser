@@ -2,8 +2,13 @@
 #include <SDL_opengl.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
-View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), m_visible(true), m_paused(false), m_state(EMPTY), m_bvh(0) {
+View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), 
+										 m_tx(x), m_ty(y), m_twidth(w), m_theight(h),
+										 m_visible(true), m_paused(false), m_state(EMPTY),
+										 m_bvh(0), m_name(0)
+{
 	m_near = 0.1f;
 	m_far = 1000.f;
 	m_frame = 0;
@@ -16,36 +21,17 @@ View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h)
 View::~View() {
 }
 
-
-bool View::loadFile(const char* file) {
-	FILE* fp = fopen(file, "r");
-	if(!fp) { printf("Failed\n"); return false; }
-	fseek(fp, 0, SEEK_END);
-	int len = ftell(fp);
-	rewind(fp);
-	char* content = new char[len+1];
-	fread(content, 1, len, fp);
-	content[len] = 0;
-	fclose(fp);
-	// Read bvh
-	BVH* bvh = new BVH();
-	int r = bvh->load(content);
-	if(r) {
-		setBVH(bvh);
-	} else {
-		setBVH(0);
-		delete bvh;
-	}
-	return r;
-}
-void View::setBVH(BVH* bvh) {
+void View::setBVH(BVH* bvh, const char* name) {
 	if(m_bvh) {
 		delete m_bvh;
 		delete [] m_final;
+		if(m_name) free(m_name);
+		m_name = 0;
 	}
 	m_bvh = bvh;
 	m_frame = 0;
 	if(bvh) {
+		m_name = strdup(name);
 		m_final = new Transform[ m_bvh->getPartCount() ];
 		updateBones(0);
 	}
@@ -55,12 +41,34 @@ void View::setVisible(bool v) {
 	m_visible = v;
 }
 
-void View::resize(int x, int y, int w, int h) {
-	m_x = x;
-	m_y = y;
-	m_width = w;
-	m_height = h;
+bool View::isVisible() const {
+	return m_visible;
+}
+
+void View::resize(int x, int y, int w, int h, bool smooth) {
+	if(!smooth) {
+		m_x = x;
+		m_y = y;
+		m_width = w;
+		m_height = h;
+	}
+	m_tx = x;
+	m_ty = y;
+	m_twidth = w;
+	m_theight = h;
+
 	updateProjection();
+}
+
+void View::move(int x, int y) {
+	m_x += x;
+	m_y += y;
+	m_tx += x;
+	m_ty += y;
+}
+
+bool View::contains(int x, int y) {
+	return m_visible && x>=m_x && y>=m_y && x <= m_x+m_width && y <= m_y+m_height;
 }
 
 void View::setCamera(float yaw, float pitch, float zoom) {
@@ -135,8 +143,30 @@ void View::togglePause() {
 	m_paused = !m_paused;
 }
 
+void View::setState(State s) { m_state = s; }
+View::State View::getState() const { return m_state; }
+
 
 void View::update(float time) {
+	if(m_tx != m_x || m_twidth != m_width) {
+		const float speed = 128;
+		int dx = m_tx - m_x;
+		int dy = m_ty - m_y;
+		int dw = m_twidth - m_width;
+		int dh = m_theight - m_height;
+		int max = 0;
+		if(abs(dx) > max) max = abs(dx);
+		if(abs(dy) > max) max = abs(dy);
+		if(abs(dw) > max) max = abs(dw);
+		if(abs(dh) > max) max = abs(dh);
+
+		#define lerp(a,b,t) (a + (b-a)*t)
+		float t = max < speed? 1.0: speed / max;
+		m_x = lerp(m_x, m_tx, t);
+		m_y = lerp(m_y, m_ty, t);
+		m_width  = lerp(m_width, m_twidth,   t);
+		m_height = lerp(m_height, m_theight, t);
+	}
 	
 	if(m_bvh && !m_paused && m_visible) {
 		m_frame += time / m_bvh->getFrameTime();
@@ -293,6 +323,10 @@ void View::drawGrid() {
 	struct GridVertex { float x, y; int c; };
 	static GridVertex* data = 0;
 
+	int colour = 0x202020;
+	int xaxis = 0x005000;
+	int yaxis = 0x000050;
+
 	if(!data) {
 		data = new GridVertex[lines * 4];
 
@@ -300,7 +334,7 @@ void View::drawGrid() {
 		float s = lines / 2;
 		float t = -s;
 		for(int i=0; i<lines; ++i) {
-			int c = i==lines/2? 0x008000: 0x808080;
+			int c = i==lines/2? xaxis: colour;
 			data[k].x = s;
 			data[k].y = t;
 			data[k].c = c;
@@ -315,7 +349,7 @@ void View::drawGrid() {
 
 		t = -s;
 		for(int i=0; i<lines; ++i) {
-			int c = i==lines/2? 0x00080: 0x808080;
+			int c = i==lines/2? yaxis: colour;
 			data[k].x = t;
 			data[k].y = s;
 			data[k].c = c;

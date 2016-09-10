@@ -12,29 +12,37 @@ class View {
 	View(int x, int y, int w, int h);
 	~View();
 
-	void setBVH(BVH*);
-	bool loadFile(const char* file);
-	void resize(int x, int y, int w, int h);
+	void setBVH(BVH*, const char* name=0);
+	void resize(int x, int y, int w, int h, bool smooth=false);
+	void move(int x, int y);
+	bool contains(int mx, int my);
+
 	void setCamera(float yaw, float pitch, float zoom);
 	void rotateView(float yaw, float pitch);
 	void zoomView(float mult);
 	void autoZoom();
+
 	void setVisible(bool v);
+	bool isVisible() const;
 
 	void render() const;
 	void update(float time);
 	void togglePause();
 
 	State getState() const;
+	void setState(State);
 
 	protected:
 	int m_x, m_y, m_width, m_height;
+	int m_tx, m_ty, m_twidth, m_theight;
+
 	char  m_title[128];
 	bool  m_visible;
 	bool  m_paused;
 	State m_state;
 
 	BVH*       m_bvh;
+	char*      m_name;
 	Transform* m_final;
 	float      m_frame;
 
