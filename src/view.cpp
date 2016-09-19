@@ -1,5 +1,6 @@
 #include "view.h"
 #include <SDL_opengl.h>
+#include <SDL_ttf.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -7,7 +8,7 @@
 View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), 
 										 m_tx(x), m_ty(y), m_twidth(w), m_theight(h),
 										 m_visible(true), m_paused(false), m_state(EMPTY),
-										 m_bvh(0), m_name(0)
+										 m_text(0), m_bvh(0), m_name(0)
 {
 	m_near = 0.1f;
 	m_far = 1000.f;
@@ -34,6 +35,36 @@ void View::setBVH(BVH* bvh, const char* name) {
 		m_name = strdup(name);
 		m_final = new Transform[ m_bvh->getPartCount() ];
 		updateBones(0);
+	}
+}
+
+TTF_Font* staticFont = 0;
+void View::setFont(const char* fontName, int size) {
+	if(fontName) {
+		if(!TTF_WasInit()) TTF_Init();
+		staticFont = TTF_OpenFont(fontName, size);
+		if(!staticFont) printf("Failed to load font %s\n", fontName);
+	}
+	else TTF_CloseFont(staticFont);
+}
+
+void View::setText(const char* text) {
+	if(!staticFont) text = 0;
+	if(text == 0 && m_text == 0) glDeleteTextures(1, &m_text);
+	else if(text) {
+		if(!m_text) glGenTextures(1, &m_text);
+		glBindTexture(GL_TEXTURE_2D, m_text);
+
+		// Create text image
+		SDL_Colour colour;
+		colour.r = colour.g = colour.b = /*colour.a =*/ 255;
+		SDL_Surface* s = TTF_RenderText_Blended(staticFont, text, colour);
+		m_textWidth  = s->w;
+		m_textHeight = s->h;
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, s->w, s->h, 0, GL_BGRA, GL_UNSIGNED_BYTE, s->pixels);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		SDL_FreeSurface(s);
 	}
 }
 
@@ -247,6 +278,25 @@ void View::render() const {
 	static const float border[] = { -1,-1, 1,-1, 1,1, -1,1, -1,-1 };
 	glVertexPointer(2, GL_FLOAT, 0, border);
 	glDrawArrays(GL_LINE_STRIP, 0, 5);
+
+	// Text
+	if(m_text) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBindTexture(GL_TEXTURE_2D, m_text);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+		glColor4f(1,1,1,1);
+		float w = m_textWidth * 2.0 / m_width - 1;
+		float h = m_textHeight * 2.0 / m_height - 1;
+		float box[] = { -1, -1, -1, h, w, -1,w, h };
+		float tex[] = { 0,1, 0,0, 1,1, 1,0 };
+		glVertexPointer(2, GL_FLOAT, 0, box);
+		glTexCoordPointer(2, GL_FLOAT, 0, tex);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+		glDisable(GL_TEXTURE_2D);
+	}
 
 
 	glDisableClientState(GL_VERTEX_ARRAY);

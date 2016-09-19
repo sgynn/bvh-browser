@@ -16,6 +16,8 @@ class View {
 	void resize(int x, int y, int w, int h, bool smooth=false);
 	void move(int x, int y);
 	bool contains(int mx, int my);
+	int top() const					{ return m_y; }
+	int bottom() const				{ return m_y + m_height; }
 
 	void setCamera(float yaw, float pitch, float zoom);
 	void rotateView(float yaw, float pitch);
@@ -32,6 +34,9 @@ class View {
 	State getState() const;
 	void setState(State);
 
+	void setText(const char* text);
+	static void setFont(const char* font, int size=24);
+
 	protected:
 	int m_x, m_y, m_width, m_height;
 	int m_tx, m_ty, m_twidth, m_theight;
@@ -40,6 +45,10 @@ class View {
 	bool  m_visible;
 	bool  m_paused;
 	State m_state;
+
+	unsigned   m_text;
+	int        m_textWidth;
+	int        m_textHeight;
 
 	BVH*       m_bvh;
 	char*      m_name;

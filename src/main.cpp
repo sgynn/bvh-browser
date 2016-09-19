@@ -172,6 +172,7 @@ void requestLoad(const FileEntry& file, View* v) {
 	r.file = file;
 	r.view = v;
 	app.loadQueue.push_back(r);
+	v->setText( file.name.c_str() );
 
 }
 void cancelLoad(View* v) {
@@ -277,6 +278,9 @@ int main(int argc, char* argv[]) {
 
 	glEnable(GL_DEPTH_TEST);
 
+	// Load font
+	View::setFont("/usr/share/fonts/truetype/DejaVuSans.ttf", 16);	// ick - seems there is no search.
+
 	// Set up views
 	app.mainView = new View(0,0,app.width,app.height);
 	app.activeView = app.mainView;
@@ -333,6 +337,19 @@ void setLayout(AppMode layout) {
 	app.mode = layout;
 }
 
+View* getViewAt(int mx, int my) {
+	if(app.mode == VIEW_TILES) {
+		my = app.height - my;
+		for(size_t i=0; i<app.views.size(); ++i) {
+			if(app.views[i]->contains(mx, my)) {
+				return app.views[i];
+			}
+		}
+	}
+	else return app.activeView;
+	return 0;
+}
+
 
 void mainLoop() {
 	bool running = true;
@@ -373,7 +390,8 @@ void mainLoop() {
 				break;
 
 			case SDL_MOUSEWHEEL:
-				if(app.mode == VIEW_TILES) {
+				moved = true;
+				if(app.mode == VIEW_TILES && !rotate) {
 					int offset = event.wheel.y * 48;
 					if(offset>0 && app.scrollOffset >=0) break;
 
@@ -390,21 +408,14 @@ void mainLoop() {
 			case SDL_MOUSEBUTTONDOWN:
 				moved = false;
 				rotate = true;
+				app.activeView = getViewAt(event.button.x, event.button.y);
 				break;
 
 			case SDL_MOUSEBUTTONUP:
 				rotate = false;
-				if(!moved) {
+				if(!moved && app.activeView) {
 					if(app.mode == VIEW_TILES) {
-						int mx = event.button.x;
-						int my = app.height - event.button.y;
-						for(size_t i=0; i<app.views.size(); ++i) {
-							if(app.views[i]->contains(mx, my)) {
-								app.activeView = app.views[i];
-								setLayout(VIEW_SINGLE);
-								break;
-							}
-						}
+						setLayout(VIEW_SINGLE);
 					}
 					else {
 						setLayout(VIEW_TILES);
@@ -441,7 +452,7 @@ void mainLoop() {
 			int mx, my;
 			SDL_GetRelativeMouseState(&mx, &my);
 			if(rotate) {
-				app.activeView->rotateView(-mx*0.01, my*0.01);
+				if(app.activeView) app.activeView->rotateView(-mx*0.01, my*0.01);
 				moved |= mx || my;
 			}
 			
@@ -453,19 +464,32 @@ void mainLoop() {
 			float time = (ticks - lticks) * 0.001; // ticks in miliseconds
 
 			for(size_t i=0; i<app.views.size(); ++i) {
+				if(app.views[i]->top() > app.height) continue;
+				if(app.views[i]->bottom() <= 0) break;
 				app.views[i]->update(time);
 			}
 
 			// Render everything
+			int count = 0;
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			for(size_t i=0; i<app.views.size(); ++i) {
-				if(app.views[i] != app.activeView) app.views[i]->render();
+			if(app.mode == VIEW_TILES) {
+				for(size_t i=0; i<app.views.size(); ++i) {
+					if(app.views[i]->top() > app.height) continue;
+					if(app.views[i]->bottom() <= 0) break;
+					if(app.views[i] != app.activeView) app.views[i]->render();
+					++count;
+				}
 			}
 			if(app.activeView) app.activeView->render();
 
 			// Limit to 60fps?
 			uint t = ticks - lticks;
 			if(t < 10) SDL_Delay(10 - t);
+			else SDL_Delay(1);
+
+			static char buffer[128];
+			sprintf(buffer, "%d %d %d\n", t, count, app.views[0]->bottom());
+			SDL_SetWindowTitle(app.window, buffer);
 
 			SDL_GL_SwapWindow(app.window);
 		}
