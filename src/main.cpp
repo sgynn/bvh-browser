@@ -173,6 +173,7 @@ void requestLoad(const FileEntry& file, View* v) {
 	r.view = v;
 	app.loadQueue.push_back(r);
 	v->setText( file.name.c_str() );
+	v->setState( View::QUEUED );
 
 }
 void cancelLoad(View* v) {
@@ -180,12 +181,16 @@ void cancelLoad(View* v) {
 	for(size_t i=0; i<app.loadQueue.size(); ++i) {
 		if(app.loadQueue[i].view == v) {
 			app.loadQueue.erase( app.loadQueue.begin()+i);
+			v->setState( View::EMPTY );
 			break;
 		}
 	}
 }
 void cancelAll() {
 	MutexLock lock(app.loadMutex);
+	for(size_t i=0; i<app.loadQueue.size(); ++i) {
+		app.loadQueue[i].view->setState( View::EMPTY );
+	}
 	app.loadQueue.clear();
 }
 void loadThreadFunc(bool* running) {
@@ -285,6 +290,8 @@ int main(int argc, char* argv[]) {
 	app.mainView = new View(0,0,app.width,app.height);
 	app.activeView = app.mainView;
 	app.views.push_back(app.mainView);
+	app.mode = VIEW_SINGLE;
+
 
 	if(!app.files.empty()) {
 		requestLoad(app.files[app.currentFile], app.mainView);
@@ -310,13 +317,8 @@ void setupTiles() {
 		// Position view
 		int x = i % columns * app.tileSize;
 		int y = app.height - app.tileSize - i / columns * app.tileSize - app.scrollOffset;
-		view->resize(x, y, app.tileSize, app.tileSize, true);
+		view->resize(x, y, app.tileSize, app.tileSize, false);
 		view->setVisible(true);
-
-		// Load data
-		if(view->getState() == View::EMPTY) {
-			requestLoad(app.files[i], view);
-		}
 	}
 }
 
@@ -463,24 +465,40 @@ void mainLoop() {
 			ticks = SDL_GetTicks();
 			float time = (ticks - lticks) * 0.001; // ticks in miliseconds
 
-			for(size_t i=0; i<app.views.size(); ++i) {
-				if(app.views[i]->top() > app.height) continue;
-				if(app.views[i]->bottom() <= 0) break;
-				app.views[i]->update(time);
-			}
 
-			// Render everything
 			int count = 0;
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			if(app.mode == VIEW_TILES) {
-				for(size_t i=0; i<app.views.size(); ++i) {
-					if(app.views[i]->top() > app.height) continue;
-					if(app.views[i]->bottom() <= 0) break;
-					if(app.views[i] != app.activeView) app.views[i]->render();
-					++count;
+			switch(app.mode) {
+			case VIEW_SINGLE:
+				if(app.activeView) {
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					app.activeView->update(time);
+					app.activeView->render();
 				}
+				break;
+			case VIEW_TILES:
+				for(size_t i=0; i<app.views.size(); ++i) {
+					View* view = app.views[i];
+					if(view->top() > app.height) continue;
+					if(view->bottom() <= 0) break;
+					if(view->getState() == View::EMPTY) {
+						requestLoad(app.files[i], view);
+					}
+					view->update(time);
+				}
+
+				// Render everything
+				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+				if(app.mode == VIEW_TILES) {
+					for(size_t i=0; i<app.views.size(); ++i) {
+						if(app.views[i]->top() > app.height) continue;
+						if(app.views[i]->bottom() <= 0) break;
+						if(app.views[i] != app.activeView) app.views[i]->render();
+						++count;
+					}
+				}
+				if(app.activeView) app.activeView->render();
+				break;
 			}
-			if(app.activeView) app.activeView->render();
 
 			// Limit to 60fps?
 			uint t = ticks - lticks;

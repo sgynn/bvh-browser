@@ -7,7 +7,7 @@
 /** Single bvh view */
 class View {
 	public:
-	enum State { EMPTY, LOADING, LOADED, INVALID };
+	enum State { EMPTY, QUEUED, LOADING, LOADED, INVALID };
 
 	View(int x, int y, int w, int h);
 	~View();
