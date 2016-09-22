@@ -7,7 +7,7 @@
 
 View::View(int x, int y, int w, int h) : m_x(x), m_y(y), m_width(w), m_height(h), 
 										 m_tx(x), m_ty(y), m_twidth(w), m_theight(h),
-										 m_visible(true), m_paused(false), m_state(EMPTY),
+										 m_visible(false), m_paused(false), m_state(EMPTY),
 										 m_text(0), m_bvh(0), m_name(0)
 {
 	m_near = 0.1f;

@@ -29,8 +29,7 @@ enum AppMode { VIEW_SINGLE, VIEW_TILES };
 
 struct App {
 	SDL_Window* window;					// app window
-	int         currentFile;			// current file of main view
-	View*       mainView;				// main view
+	int         activeIndex;			// current view index in single mode
 	View*       activeView;				// view accepting input
 	AppMode     mode;					// current mode
 	int         scrollOffset;			// Scroll offset in tile view
@@ -217,10 +216,44 @@ void loadThreadFunc(bool* running) {
 	printf("Load thread ended\n");
 }
 
+// -------------------------------------------------------------------------------------- //
+
+bool exportFile(const FileEntry& file) {
+	printf("Exporting %s\n", file.name.c_str());
+	const char* outFile = file.name.c_str();
+	if(file.archive.empty()) {
+		std::string filename = file.directory + "/" + file.name;
+		FILE* fp = fopen(filename.c_str(), "r");
+		if(!fp) { printf("Failed\n"); return false; }
+		fseek(fp, 0, SEEK_END);
+		size_t len = ftell(fp);
+		rewind(fp);
+		char* content = new char[len];
+		fread(content, 1, len, fp);
+		fclose(fp);
+		
+		fp = fopen(outFile, "w");
+		if(fp) fwrite(content, 1, len, fp);
+		delete [] content;
+		return fp;
+	}
+	else {
+		mz_zip_archive zipFile;
+		memset(&zipFile, 0, sizeof(zipFile));
+		mz_bool status = mz_zip_reader_init_file(&zipFile, file.archive.c_str(), 0);
+		if(!status) return false;
+		mz_zip_reader_extract_to_file(&zipFile, file.zipIndex, outFile, MZ_ZIP_FLAG_IGNORE_PATH);
+		mz_zip_reader_end(&zipFile);
+		return true;
+	}
+}
 
 // -------------------------------------------------------------------------------------- //
 
 void mainLoop();
+void createViews();
+void setupTiles(bool smooth);
+void setLayout(AppMode layout);
 
 int main(int argc, char* argv[]) {
 	printf(
@@ -228,7 +261,7 @@ int main(int argc, char* argv[]) {
 		"http://sam.draknek.org/projects/bvh-browser\n"
 		"Distributed under GPL\n");
 	
-	app.currentFile = 0;
+	app.activeIndex = -1;
 	app.mode = VIEW_SINGLE;
 	app.scrollOffset = 0;
 	
@@ -249,7 +282,7 @@ int main(int argc, char* argv[]) {
 			const char* name = getName(argv[i]);
 			for(size_t j=0; j<app.files.size(); ++j) {
 				if(app.files[j].name == name) {
-					app.currentFile=j;
+					app.activeIndex = j;
 					break;
 				}
 			}
@@ -287,15 +320,25 @@ int main(int argc, char* argv[]) {
 	View::setFont("/usr/share/fonts/truetype/DejaVuSans.ttf", 16);	// ick - seems there is no search.
 
 	// Set up views
-	app.mainView = new View(0,0,app.width,app.height);
-	app.activeView = app.mainView;
-	app.views.push_back(app.mainView);
-	app.mode = VIEW_SINGLE;
+	createViews();
 
-
-	if(!app.files.empty()) {
-		requestLoad(app.files[app.currentFile], app.mainView);
+	// Initial single mode
+	if(app.activeIndex >= 0) {
+		app.activeView = app.views[app.activeIndex];
+		app.activeView->resize(0, 0, app.width, app.height, false);
+		app.activeView->setVisible(true);
+		// Load files
+		for(int i=0; i<4; ++i) {
+			int k = (app.activeIndex + i) % app.views.size();
+			if(app.views[k]->getState() == View::EMPTY) {
+				requestLoad(app.files[k], app.views[k]);
+			}
+		}
+	} else {
+		setLayout(VIEW_TILES);
+		setupTiles(false);
 	}
+
 
 	mainLoop();
 
@@ -303,21 +346,19 @@ int main(int argc, char* argv[]) {
 
 }
 
-void setupTiles() {
-	int columns = app.width / app.tileSize;
-	for(size_t i=0; i<app.files.size(); ++i) {
-		// create view
-		View* view;
-		if(i < app.views.size()) view = app.views[i];
-		else {
-			view = new View(0,0,1,1);
-			app.views.push_back(view);
-		} 
+void createViews() {
+	for(size_t i=app.views.size(); i<app.files.size(); ++i) {
+		app.views.push_back( new View(0,0,1,1) );
+	}
+}
 
-		// Position view
+void setupTiles(bool smooth) {
+	int columns = app.width / app.tileSize;
+	for(size_t i=0; i<app.views.size(); ++i) {
+		View* view = app.views[i];
 		int x = i % columns * app.tileSize;
 		int y = app.height - app.tileSize - i / columns * app.tileSize - app.scrollOffset;
-		view->resize(x, y, app.tileSize, app.tileSize, false);
+		view->resize(x, y, app.tileSize, app.tileSize, smooth);
 		view->setVisible(true);
 	}
 }
@@ -326,30 +367,37 @@ void setLayout(AppMode layout) {
 	switch(layout) {
 	case VIEW_SINGLE:	// Single view
 		for(size_t i=0; i<app.views.size(); ++i) {
-			if(app.views[i] != app.activeView) app.views[i]->setVisible(false);
+			app.views[i]->setVisible(false);
 		}
 		app.activeView->setVisible(true);
 		app.activeView->resize(0,0,app.width,app.height, true);
 		break;
 
 	case VIEW_TILES: // Tile view
-		setupTiles();
+		setupTiles(true);
 		break;
 	}
 	app.mode = layout;
 }
 
-View* getViewAt(int mx, int my) {
+int getViewAt(int mx, int my) {
 	if(app.mode == VIEW_TILES) {
 		my = app.height - my;
 		for(size_t i=0; i<app.views.size(); ++i) {
 			if(app.views[i]->contains(mx, my)) {
-				return app.views[i];
+				return i;
 			}
 		}
 	}
-	else return app.activeView;
-	return 0;
+	else return app.activeIndex;
+	return -1;
+}
+
+void selectView(int index) {
+	if(index >= 0 && index < (int)app.views.size()) {
+		app.activeIndex = index;
+		app.activeView = app.views[index];
+	}
 }
 
 
@@ -360,6 +408,8 @@ void mainLoop() {
 	ticks = lticks = SDL_GetTicks();
 	bool rotate = false;
 	bool moved = false;
+	int keyMask = 0;
+	int index = 0;
 
 	// start load thread
 	app.loadThread.begin(&loadThreadFunc, &running);
@@ -377,8 +427,14 @@ void mainLoop() {
 				case SDL_WINDOWEVENT_SIZE_CHANGED:
 					app.width = event.window.data1;
 					app.height = event.window.data2;
-					app.mainView->resize(0, 0, app.width, app.height);
-					app.mainView->autoZoom();
+					if(app.tileSize > app.width) app.tileSize = app.width;
+					if(app.mode == VIEW_SINGLE) {
+						app.activeView->resize(0,0,app.width,app.height,false);
+						app.activeView->autoZoom();
+					}
+					else {
+						setupTiles(false);
+					}
 					break;
 
 				}
@@ -387,13 +443,23 @@ void mainLoop() {
 			case SDL_DROPFILE:
 				if(endsWith(event.drop.file, ".bvh")) {
 					addFile(event.drop.file);
+					createViews();
+					selectView( app.views.size() - 1 );
+					app.activeView = app.views.back();
+					setLayout(VIEW_SINGLE);
 				}
 				SDL_free(event.drop.file);
 				break;
 
 			case SDL_MOUSEWHEEL:
 				moved = true;
-				if(app.mode == VIEW_TILES && !rotate) {
+				if(app.mode == VIEW_TILES && (keyMask&3)) {
+					app.tileSize *= 1.0 + event.wheel.y * 0.1;
+					if(app.tileSize < 32) app.tileSize = 32;
+					if(app.tileSize > app.width) app.tileSize = app.width;
+					setupTiles(false);
+				}
+				else if(app.mode == VIEW_TILES && !rotate) {
 					int offset = event.wheel.y * 48;
 					if(offset>0 && app.scrollOffset >=0) break;
 
@@ -410,7 +476,8 @@ void mainLoop() {
 			case SDL_MOUSEBUTTONDOWN:
 				moved = false;
 				rotate = true;
-				app.activeView = getViewAt(event.button.x, event.button.y);
+				index = getViewAt(event.button.x, event.button.y);
+				selectView(index);
 				break;
 
 			case SDL_MOUSEBUTTONUP:
@@ -428,20 +495,57 @@ void mainLoop() {
 			case SDL_KEYDOWN:
 				if(event.key.keysym.sym == SDLK_z) app.activeView->autoZoom();
 				if(event.key.keysym.sym == SDLK_SPACE) app.activeView->togglePause();
-				if(event.key.keysym.sym == SDLK_t) setLayout(VIEW_TILES);
 
-				if(app.files.size() > 1) {
+				// Mask
+				if(event.key.keysym.sym == SDLK_LCTRL)  keyMask |= 0x01;
+				if(event.key.keysym.sym == SDLK_RCTRL)  keyMask |= 0x02;
+				if(event.key.keysym.sym == SDLK_LSHIFT) keyMask |= 0x04;
+				if(event.key.keysym.sym == SDLK_RSHIFT) keyMask |= 0x08;
+				if(event.key.keysym.sym == SDLK_LALT)   keyMask |= 0x10;
+				if(event.key.keysym.sym == SDLK_RALT)   keyMask |= 0x20;
+
+				// Navigation
+				if(app.files.size() > 1 && app.mode == VIEW_SINGLE) {
 					int m = 0;
 					if(event.key.keysym.sym == SDLK_LEFT) m = -1;
 					if(event.key.keysym.sym == SDLK_RIGHT) m = 1;
-					if(m!=0) {
-						app.currentFile = (app.currentFile + m + app.files.size()) % app.files.size();
-						requestLoad(app.files[ app.currentFile], app.mainView);
+					if(m != 0) {
+						int count = app.views.size();
+						index = (app.activeIndex + m + count) % count;
+						app.activeView->setVisible(false);
+						selectView(index);
+						app.activeView->setVisible(true);
+						app.activeView->resize(0,0,app.width,app.height, false);
+						// Load files (with look ahead)
+						for(int i=0; i<4; ++i) {
+							int k = (index + i) % count;
+							if(app.views[k]->getState() == View::EMPTY) {
+								requestLoad(app.files[k], app.views[k]);
+							}
+						}
 					}
 				}
 
+				// Escape
+				if(event.key.keysym.sym == SDLK_ESCAPE) {
+					if(app.mode == VIEW_SINGLE) setLayout(VIEW_TILES);
+					else running = false;
+				}
+
+				// Export test
+				if(event.key.keysym.sym == SDLK_s) {
+					exportFile(app.files[app.activeIndex]);
+				}
+
+				break;
+
 			case SDL_KEYUP:
-				if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
+				if(event.key.keysym.sym == SDLK_LCTRL)  keyMask &= ~0x01;
+				if(event.key.keysym.sym == SDLK_RCTRL)  keyMask &= ~0x02;
+				if(event.key.keysym.sym == SDLK_LSHIFT) keyMask &= ~0x04;
+				if(event.key.keysym.sym == SDLK_RSHIFT) keyMask &= ~0x08;
+				if(event.key.keysym.sym == SDLK_LALT)   keyMask &= ~0x10;
+				if(event.key.keysym.sym == SDLK_RALT)   keyMask &= ~0x20;
 				break;
 
 			default:
@@ -476,6 +580,7 @@ void mainLoop() {
 				}
 				break;
 			case VIEW_TILES:
+				// Update all visible views
 				for(size_t i=0; i<app.views.size(); ++i) {
 					View* view = app.views[i];
 					if(view->top() > app.height) continue;
@@ -501,12 +606,12 @@ void mainLoop() {
 			}
 
 			// Limit to 60fps?
-			uint t = ticks - lticks;
+			uint t = SDL_GetTicks() - ticks;
 			if(t < 10) SDL_Delay(10 - t);
 			else SDL_Delay(1);
 
 			static char buffer[128];
-			sprintf(buffer, "%d %d %d\n", t, count, app.views[0]->bottom());
+			sprintf(buffer, "%d %x\n", t, keyMask);
 			SDL_SetWindowTitle(app.window, buffer);
 
 			SDL_GL_SwapWindow(app.window);
