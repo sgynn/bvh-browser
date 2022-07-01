@@ -58,9 +58,10 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 	// parse name
 	int len = 0;
 	const char* name = data;
-	while(data[len]>='*' && data[len]<='z') ++len;
+	while((data[len]>='*' && data[len]<='z') || data[len]==' ') ++len;
 	data += len;
 	whitespace(data);
+	while(name[len]==' ') --len; //trim
 
 	// block start
 	if(!word(data, "{", 1)) return 0;
@@ -120,6 +121,7 @@ BVH::Part* BVH::readHeirachy(const char*& data) {
 		// Read child part
 		else if(word(data, "JOINT", 5)) {
 			Part* child = readHeirachy(data);
+			if(!child) break;
 			child->parent = index;
 			part->end = part->end + child->offset;
 			++childCount;
@@ -166,6 +168,7 @@ bool BVH::load(const char* data) {
 			nextLine(data);
 			if(word(data, "ROOT", 4)) {
 				m_root = readHeirachy(data);
+				if(!m_root) return false;
 			}
 		}
 
@@ -239,7 +242,6 @@ bool BVH::load(const char* data) {
 			}
 		}
 		else {
-			printf("Read error\n");
 			return false;
 		}
 	}

@@ -141,7 +141,10 @@ BVH* loadFile(const FileEntry& file) {
 		BVH* bvh = new BVH();
 		int r = bvh->load(content);
 		if(r) return bvh;
-		else delete bvh;
+		else {
+			printf("Error loading %s\n", filename.c_str());
+			delete bvh;
+		}
 		return 0;
 	}
 	else {
